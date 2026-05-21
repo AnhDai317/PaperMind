@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import './index.css';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
 const SAMPLES = {
   invoice: `INVOICE #99812\n\nDate: 2026-05-21\nVendor: Globex Corp\n\nItems:\n- Software License: $1,500.00\n- Cloud Hosting: $250.00\n\nTotal Due: $1,750.00\nTax: 10%`,
@@ -18,6 +18,7 @@ function App() {
   const [step, setStep] = useState(0); 
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const [abortController, setAbortController] = useState(null);
 
   // Review Queue Tab State
   const [documents, setDocuments] = useState([]);
@@ -51,12 +52,22 @@ function App() {
     setResult(null);
     setError(null);
 
+    const controller = new AbortController();
+    setAbortController(controller);
+
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, 30000);
+
     try {
       const response = await fetch(`${API_URL}/api/documents/extract`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text })
+        body: JSON.stringify({ text }),
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
 
       if (response.ok) {
         const data = await response.json();
@@ -67,8 +78,20 @@ function App() {
         setStep(0);
       }
     } catch (err) {
-      setError(`Network error connecting to ${API_URL}`);
+      if (err.name === 'AbortError') {
+        setError('Request timed out or was cancelled by the user.');
+      } else {
+        setError(`Network error connecting to ${API_URL}`);
+      }
       setStep(0);
+    } finally {
+      setAbortController(null);
+    }
+  };
+
+  const handleCancel = () => {
+    if (abortController) {
+      abortController.abort();
     }
   };
 
@@ -87,13 +110,26 @@ function App() {
     }
   };
 
+  const handleReject = async (id) => {
+    try {
+      const res = await fetch(`${API_URL}/api/documents/${id}/reject`, {
+        method: 'POST'
+      });
+      if (res.ok) {
+        fetchQueue();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const getDocTypeString = (typeInt) => {
     const mapping = { 1: 'Invoice', 2: 'Contract', 3: 'CV', 0: 'Unknown' };
     return mapping[typeInt] || 'Unknown';
   };
   
   const getDocStatusString = (statusInt) => {
-    const mapping = { 0: 'Received', 1: 'Processing', 2: 'PendingHumanReview', 3: 'Completed', 4: 'Failed' };
+    const mapping = { 0: 'Received', 1: 'Processing', 2: 'Completed', 3: 'PendingHumanReview', 4: 'Failed' };
     return mapping[statusInt] || 'Unknown';
   };
 
@@ -166,9 +202,16 @@ function App() {
               
               {error && <div style={{ color: 'var(--danger)', marginTop: '1rem', fontSize: '0.9rem' }}>{error}</div>}
 
-              <button className="submit-btn" onClick={handleProcess} disabled={step === 1 || !text.trim()}>
-                {step === 1 ? '🧠 AI Processing & Routing...' : '🚀 Extract & Route Document'}
-              </button>
+              <div style={{ display: 'flex', gap: '1rem' }}>
+                <button className="submit-btn" style={{ flex: 1 }} onClick={handleProcess} disabled={step === 1 || !text.trim()}>
+                  {step === 1 ? '🧠 AI Processing & Routing...' : '🚀 Extract & Route Document'}
+                </button>
+                {step === 1 && (
+                  <button className="submit-btn" style={{ background: 'var(--danger)', flex: 0.3 }} onClick={handleCancel}>
+                    Cancel
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="glass-panel right">
@@ -278,7 +321,7 @@ function App() {
                           <button className="btn-approve" onClick={() => handleApprove(doc.id, 'Invoice')}>Invoice</button>
                           <button className="btn-approve" onClick={() => handleApprove(doc.id, 'Contract')}>Contract</button>
                           <button className="btn-approve" onClick={() => handleApprove(doc.id, 'CV')}>CV</button>
-                          <button className="btn-reject" onClick={() => alert('Feature incoming!')}>Reject</button>
+                          <button className="btn-reject" onClick={() => handleReject(doc.id)}>Reject</button>
                         </div>
                       )}
                     </div>

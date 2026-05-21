@@ -84,4 +84,14 @@ app.MapPost("/api/documents/{id}/approve", async (Guid id, [FromBody] ApproveReq
     return Results.BadRequest("Invalid document type");
 });
 
+app.MapPost("/api/documents/{id}/reject", (Guid id, IDocumentRepository repo) =>
+{
+    var doc = repo.GetById(id);
+    if (doc == null) return Results.NotFound();
+    
+    doc.MarkAsFailed();
+    repo.Update(doc);
+    return Results.Ok(doc);
+});
+
 app.Run();
