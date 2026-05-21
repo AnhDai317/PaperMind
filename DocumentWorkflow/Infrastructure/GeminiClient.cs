@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.Net.Http.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -43,8 +44,8 @@ public class GeminiClient : IGeminiClient
             return _smartMockProvider.GenerateMock(documentText.ToString());
         }
 
-        var payload = GeminiPayloadFactory.CreatePromptPayload(documentText);
-        using var content = new StringContent(payload, Encoding.UTF8, "application/json");
+        var payloadObj = GeminiPayloadFactory.CreatePromptObject(documentText);
+        using var content = JsonContent.Create(payloadObj);
 
         try
         {
@@ -103,17 +104,15 @@ public static class GeminiPayloadFactory
         "{\n  \"document_type\": \"Invoice|Contract|CV|Unknown\",\n  \"confidence_score\": 0.00-1.00,\n  \"extracted_data\": { },\n  \"reasoning\": \"Brief explanation\"\n}\n" +
         "Do not include any markdown formatting.";
 
-    public static string CreatePromptPayload(ReadOnlyMemory<char> documentMemory)
+    public static object CreatePromptObject(ReadOnlyMemory<char> documentMemory)
     {
         ReadOnlySpan<char> documentSpan = documentMemory.Span.Trim();
         var safeText = documentSpan.ToString();
 
-        var payloadObj = new
+        return new
         {
             system_instruction = new { parts = new[] { new { text = SystemInstruction } } },
             contents = new[] { new { parts = new[] { new { text = $"Process the following document:\n\n{safeText}" } } } }
         };
-
-        return JsonSerializer.Serialize(payloadObj);
     }
 }

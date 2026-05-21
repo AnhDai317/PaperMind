@@ -52,11 +52,11 @@ var app = builder.Build();
 
 app.UseCors("AllowAll");
 
-app.MapPost("/api/documents/extract", async ([FromBody] ExtractRequest request, IMediator mediator) =>
+app.MapPost("/api/documents/extract", async ([FromBody] ExtractRequest request, IMediator mediator, CancellationToken cancellationToken) =>
 {
     var document = new Document(Guid.NewGuid(), request.Text);
     var command = new ProcessDocumentCommand(document);
-    var processedDoc = await mediator.Send(command);
+    var processedDoc = await mediator.Send(command, cancellationToken);
     return Results.Ok(processedDoc);
 });
 
@@ -65,20 +65,32 @@ app.MapGet("/api/documents", (IDocumentRepository repo) =>
     return Results.Ok(repo.GetAll());
 });
 
-app.MapPost("/api/documents/{id}/approve", async (Guid id, [FromBody] ApproveRequest request, IDocumentRepository repo, DocumentStrategyResolver strategyResolver, CancellationToken cancellationToken) =>
+app.MapPost("/api/documents/{id}/approve", (Guid id, [FromBody] ApproveRequest request, IDocumentRepository repo, DocumentStrategyResolver strategyResolver, CancellationToken cancellationToken) =>
 {
     var doc = repo.GetById(id);
     if (doc == null) return Results.NotFound();
     
     if (Enum.TryParse<DocumentWorkflow.Domain.Enums.DocumentType>(request.DocumentType, true, out var type))
     {
-        doc.Approve(type);
+        lock (doc)
+        {
+            if (doc.Status == DocumentWorkflow.Domain.Enums.DocumentStatus.Completed)
+                return Results.BadRequest("Document is already approved.");
+                
+            doc.Approve(type);
+            repo.Update(doc);
+        }
+
         var strategy = strategyResolver.Resolve(type);
         if (strategy != null)
         {
-            await strategy.ProcessAsync(doc, doc.ExtractedDataJson, cancellationToken);
+            Task.Run(async () => 
+            {
+                // We use CancellationToken.None here because the request's cancellation token
+                // might be canceled as soon as this endpoint returns, which would stop the background processing.
+                await strategy.ProcessAsync(doc, doc.ExtractedDataJson, CancellationToken.None);
+            });
         }
-        repo.Update(doc);
         return Results.Ok(doc);
     }
     return Results.BadRequest("Invalid document type");
