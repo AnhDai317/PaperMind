@@ -1,9 +1,10 @@
-﻿{
+{
   "$schema": "https://json.schemastore.org/launchsettings.json",
   "profiles": {
     "DocumentWorkflow": {
       "commandName": "Project",
       "dotnetRunMessages": true,
+      "applicationUrl": "http://localhost:5000",
       "environmentVariables": {
         "DOTNET_ENVIRONMENT": "Development"
       }

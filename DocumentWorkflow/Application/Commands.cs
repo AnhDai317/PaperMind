@@ -17,18 +17,21 @@ public class ProcessDocumentCommandHandler : IRequestHandler<ProcessDocumentComm
     private readonly IGeminiClient _geminiClient;
     private readonly DocumentStrategyResolver _strategyResolver;
     private readonly ILogger<ProcessDocumentCommandHandler> _logger;
+    private readonly Infrastructure.Repositories.IDocumentRepository _documentRepository;
 
-    public ProcessDocumentCommandHandler(IGeminiClient geminiClient, DocumentStrategyResolver strategyResolver, ILogger<ProcessDocumentCommandHandler> logger)
+    public ProcessDocumentCommandHandler(IGeminiClient geminiClient, DocumentStrategyResolver strategyResolver, ILogger<ProcessDocumentCommandHandler> logger, Infrastructure.Repositories.IDocumentRepository documentRepository)
     {
         _geminiClient = geminiClient;
         _strategyResolver = strategyResolver;
         _logger = logger;
+        _documentRepository = documentRepository;
     }
 
     public async Task<Document> Handle(ProcessDocumentCommand request, CancellationToken cancellationToken)
     {
         var document = request.Document;
         var memoryText = document.RawText.AsMemory();
+        _documentRepository.Add(document);
 
         _logger.LogInformation("Sending Document {Id} to Gemini...", document.Id);
         

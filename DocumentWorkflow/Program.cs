@@ -10,14 +10,20 @@ using System.Reflection;
 using DocumentWorkflow.Application.Strategies;
 using DocumentWorkflow.Infrastructure.AI;
 using DocumentWorkflow.Infrastructure.Queues;
+using DocumentWorkflow.Infrastructure.Services;
 using DocumentWorkflow.Application.Commands;
+using DocumentWorkflow.Application.DTOs;
 using DocumentWorkflow.Domain.Entities;
+using DocumentWorkflow.Infrastructure.Repositories;
 using Microsoft.AspNetCore.Mvc;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 1. Queue Configuration
+// 1. Queue & Repository Configuration
 builder.Services.AddSingleton<IDocumentIngestionQueue>(new DocumentIngestionQueue(capacity: 5000));
+builder.Services.AddSingleton<IDocumentRepository, DocumentRepository>();
+builder.Services.AddSingleton<ISmartMockProvider, SmartMockProvider>();
+builder.Services.AddHostedService<DocumentProcessingBackgroundService>();
 
 // 2. MediatR Setup
 builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(Assembly.GetExecutingAssembly()));
@@ -54,9 +60,28 @@ app.MapPost("/api/documents/extract", async ([FromBody] ExtractRequest request, 
     return Results.Ok(processedDoc);
 });
 
-app.Run();
-
-public class ExtractRequest
+app.MapGet("/api/documents", (IDocumentRepository repo) =>
 {
-    public string Text { get; set; } = string.Empty;
-}
+    return Results.Ok(repo.GetAll());
+});
+
+app.MapPost("/api/documents/{id}/approve", async (Guid id, [FromBody] ApproveRequest request, IDocumentRepository repo, DocumentStrategyResolver strategyResolver, CancellationToken cancellationToken) =>
+{
+    var doc = repo.GetById(id);
+    if (doc == null) return Results.NotFound();
+    
+    if (Enum.TryParse<DocumentWorkflow.Domain.Enums.DocumentType>(request.DocumentType, true, out var type))
+    {
+        doc.Approve(type);
+        var strategy = strategyResolver.Resolve(type);
+        if (strategy != null)
+        {
+            await strategy.ProcessAsync(doc, doc.ExtractedDataJson, cancellationToken);
+        }
+        repo.Update(doc);
+        return Results.Ok(doc);
+    }
+    return Results.BadRequest("Invalid document type");
+});
+
+app.Run();

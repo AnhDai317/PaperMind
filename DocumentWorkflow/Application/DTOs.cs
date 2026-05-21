@@ -23,3 +23,13 @@ public class GeminiExtractionResponse
 public partial class GeminiSerializationContext : JsonSerializerContext
 {
 }
+
+public class ExtractRequest
+{
+    public string Text { get; set; } = string.Empty;
+}
+
+public class ApproveRequest
+{
+    public string DocumentType { get; set; } = string.Empty;
+}
