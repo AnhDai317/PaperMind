@@ -1,0 +1,17 @@
+# .NET
+bin/
+obj/
+appsettings.Development.json
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vscode/
+
+# Node
+node_modules/
+dist/
+npm-debug.log
+.env
+.env.local
+.env.*.local
