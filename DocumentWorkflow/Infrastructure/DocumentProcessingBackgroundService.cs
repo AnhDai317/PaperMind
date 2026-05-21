@@ -39,7 +39,13 @@ public class DocumentProcessingBackgroundService : BackgroundService
             await _queue.EnqueueAsync(new Document(Guid.NewGuid(), "INVOICE #12345 TOTAL: $500.00"), stoppingToken);
         }, stoppingToken);
 
-        await foreach (var document in _queue.ReadAllAsync(stoppingToken))
+        var options = new ParallelOptions
+        {
+            MaxDegreeOfParallelism = Environment.ProcessorCount * 2,
+            CancellationToken = stoppingToken
+        };
+
+        await Parallel.ForEachAsync(_queue.ReadAllAsync(stoppingToken), options, async (document, ct) =>
         {
             try
             {
@@ -47,12 +53,12 @@ public class DocumentProcessingBackgroundService : BackgroundService
                 var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
 
                 var command = new ProcessDocumentCommand(document);
-                await mediator.Send(command, stoppingToken);
+                await mediator.Send(command, ct);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Catastrophic error occurred processing document {DocumentId}.", document.Id);
             }
-        }
+        });
     }
 }

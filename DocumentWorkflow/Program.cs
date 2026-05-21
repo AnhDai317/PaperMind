@@ -42,15 +42,16 @@ builder.Services.AddHttpClient<IGeminiClient, GeminiClient>()
         .WaitAndRetryAsync(3, retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt))));
 
 // 5. CORS
+var allowedOrigins = builder.Configuration["AllowedOrigins"] ?? "http://localhost:5173";
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll",
-        policy => policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod());
+    options.AddPolicy("AllowFrontend",
+        policy => policy.WithOrigins(allowedOrigins.Split(',')).AllowAnyHeader().AllowAnyMethod());
 });
 
 var app = builder.Build();
 
-app.UseCors("AllowAll");
+app.UseCors("AllowFrontend");
 
 app.MapPost("/api/documents/extract", async ([FromBody] ExtractRequest request, IMediator mediator, CancellationToken cancellationToken) =>
 {
@@ -72,13 +73,17 @@ app.MapPost("/api/documents/{id}/approve", (Guid id, [FromBody] ApproveRequest r
     
     if (Enum.TryParse<DocumentWorkflow.Domain.Enums.DocumentType>(request.DocumentType, true, out var type))
     {
-        lock (doc)
+        if (doc.Status == DocumentWorkflow.Domain.Enums.DocumentStatus.Completed)
+            return Results.BadRequest("Document is already approved.");
+            
+        doc.Approve(type);
+        try
         {
-            if (doc.Status == DocumentWorkflow.Domain.Enums.DocumentStatus.Completed)
-                return Results.BadRequest("Document is already approved.");
-                
-            doc.Approve(type);
             repo.Update(doc);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Results.Conflict(ex.Message);
         }
 
         var strategy = strategyResolver.Resolve(type);

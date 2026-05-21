@@ -21,22 +21,30 @@ public class DocumentRepository : IDocumentRepository
 
     public void Add(Document document)
     {
-        _documents[document.Id] = document;
+        _documents[document.Id] = document.Clone();
     }
 
     public Document? GetById(Guid id)
     {
-        _documents.TryGetValue(id, out var document);
-        return document;
+        if (_documents.TryGetValue(id, out var document))
+            return document.Clone();
+        return null;
     }
 
     public void Update(Document document)
     {
-        _documents[document.Id] = document;
+        if (!_documents.TryGetValue(document.Id, out var existing))
+            throw new InvalidOperationException("Document not found.");
+
+        if (existing.Version != document.Version)
+            throw new InvalidOperationException("Concurrency conflict: Lost Update detected.");
+
+        if (!_documents.TryUpdate(document.Id, document.Clone(), existing))
+            throw new InvalidOperationException("Concurrency conflict: Lost Update detected.");
     }
 
     public IEnumerable<Document> GetAll()
     {
-        return _documents.Values.OrderByDescending(d => d.Id); // Using Id order as a rough proxy for creation time since Guid doesn't inherently sort by time well, but it's fine for demo
+        return _documents.Values.Select(d => d.Clone()).OrderByDescending(d => d.Id); 
     }
 }

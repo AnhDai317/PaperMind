@@ -13,6 +13,7 @@ public class Document
     public double ConfidenceScore { get; private set; }
     public string ExtractedDataJson { get; private set; }
     public string Reasoning { get; private set; }
+    public int Version { get; private set; }
 
     public List<string> AuditTrail { get; private set; }
 
@@ -24,8 +25,24 @@ public class Document
         Type = DocumentType.Unknown;
         ExtractedDataJson = string.Empty;
         Reasoning = string.Empty;
+        Version = 1;
         AuditTrail = new List<string> { $"[{DateTime.UtcNow:O}] Document Received." };
     }
+
+    public Document Clone()
+    {
+        var clone = new Document(Id, RawText);
+        clone.Type = this.Type;
+        clone.Status = this.Status;
+        clone.ConfidenceScore = this.ConfidenceScore;
+        clone.ExtractedDataJson = this.ExtractedDataJson;
+        clone.Reasoning = this.Reasoning;
+        clone.Version = this.Version;
+        clone.AuditTrail = new List<string>(this.AuditTrail);
+        return clone;
+    }
+
+    public void IncrementVersion() => Version++;
 
     public void UpdateProcessingResult(DocumentType type, double confidence, string extractedData, string reasoning)
     {
@@ -44,6 +61,7 @@ public class Document
             Status = DocumentStatus.Completed;
             AuditTrail.Add($"[{DateTime.UtcNow:O}] AI Extraction High Confidence ({confidence:P0}). Auto-Approved.");
         }
+        IncrementVersion();
     }
     
     public void Approve(DocumentType confirmedType)
@@ -51,11 +69,13 @@ public class Document
         Type = confirmedType;
         Status = DocumentStatus.Completed;
         AuditTrail.Add($"[{DateTime.UtcNow:O}] Manually Approved as {confirmedType} by Reviewer.");
+        IncrementVersion();
     }
 
     public void MarkAsFailed()
     {
         Status = DocumentStatus.Failed;
         AuditTrail.Add($"[{DateTime.UtcNow:O}] Processing Failed.");
+        IncrementVersion();
     }
 }
